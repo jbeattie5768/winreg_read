@@ -1,8 +1,10 @@
+# The Story so Far
+
 Reading UV docs and came across [Registration in the Windows registry](https://docs.astral.sh/uv/concepts/python-versions/#registration-in-the-windows-registry) which talked about [PEP 514](https://peps.python.org/pep-0514/).
 
 I'd not known about this, not thought about it to be honest, but when you lok in the Windows Registry you can see the Python versions.
 
-![Example of Python in the Windows Regsitry](image)
+![Example of Python in the Windows Registry](image)
 
 Scanning through PEP 514 there are two Python [Sample Code](https://peps.python.org/pep-0514/#sample-code) sections that read the registry and show the "Company-Tag pairs". The two code samples do:
 
@@ -29,19 +31,19 @@ My default Python version  to run these samples if 3.13.5.
 
 Lets run Sample1:
 
-![alt text](image.png)
+![alt text](/images/image.png)
 
 Interesting, it's identified all the versions, but does not think they are executable. We will come back to that as it's wrong.
 
 Lets run Sample2:
 
-![alt text](image-1.png)
+![alt text](/images/image-1.png)
 
 Better, but still some issues: version numbers appear truncated and it can't get the system architecture.
 
 Looking at the Windows `RegEdit.exe` application we can see there are executable paths and architecture and version data:
 
-![alt text](image-2.png)
+![alt text](/images/image-2.png)
 
 Time to modify the code...but first lets read the [WinReg Documentation](https://docs.python.org/3.13/library/winreg.html)...brb....
 
@@ -71,12 +73,26 @@ print(f"SubKey values: DisplayName='{dis_value}', SupportUrl='{uri_value}'")
 
 ```
 
-Okay, pretty simple but very much hardcoded. Interestingly, the documntation says to use `winreg.QueryValueEx()` over `winreg.QueryValue()` that the sample code uses. This seems to be because the latter returns the first Null entry of the sub-key, which is the '_(Default)_' value and is usually empty.
+Okay, pretty simple but very much hardcoded. Interestingly, the documentation says to use `winreg.QueryValueEx()` over `winreg.QueryValue()` that the sample code uses. This seems to be because the latter returns the first Null entry of the sub-key, which is the '_(Default)_' value and is usually empty.
 
 If we use the preferred `winreg.QueryValueEx()` function in the sample code and only return the value string (ignore the value type, it's always 1 == `winreg.REG_SZ`):
 
-![alt text](image-3.png)
+![alt text](/images/image-3.png)
 
 That is now correct.  
 
 ----
+
+## Can we do Better?
+
+Reading the docs, there are functions that will enumerates the keys and values of an open registry key. We could use those to enumerate through the available sub-keys and values.
+
+It might be too much to enumerate through every key, but we can continue to start from the given sub-key.
+
+Let give tt a go and see what we end up with....
+
+----
+
+## Further Reading
+
+- [Registry Hives](https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry-hives)
