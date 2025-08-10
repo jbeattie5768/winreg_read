@@ -17,7 +17,8 @@ def enum_keys(key):
 
 def get_value(key, value_name):
     try:
-        return winreg.QueryValue(key, value_name)
+        value, type = winreg.QueryValueEx(key, value_name)
+        return value
     except FileNotFoundError:
         return None
 
