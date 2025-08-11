@@ -1,182 +1,153 @@
-# Win Reg mentioned in UV documentation:
-# https://docs.astral.sh/uv/concepts/python-versions/#registration-in-the-windows-registry
-#
-# There is some sample code in PeP 514, but it did not work:
-# https://peps.python.org/pep-0514/#sample-code
-#
-# Instead I came up with my own based on the Python winreg module.
-#
-
-import sys
+import os
 import winreg
 
-MAX_PRINT_COL_WIDTH = 24  # 2nd column value data alignment
-
-# https://docs.python.org/3/library/winreg.html#hkey-constants
-valid_root_hkeys = {
-    "HKEY_CLASSES_ROOT": winreg.HKEY_CLASSES_ROOT,
-    "HKEY_CURRENT_USER": winreg.HKEY_CURRENT_USER,
-    "HKEY_LOCAL_MACHINE": winreg.HKEY_LOCAL_MACHINE,
-    "HKEY_USERS": winreg.HKEY_USERS,
-    "HKEY_CURRENT_CONFIG": winreg.HKEY_CURRENT_CONFIG,
-}
+MAX_PRINT_COL_WIDTH = 24  # Align 2nd column from 1st column
 
 
-def list_all_subkey_values(hkey, subkey=""):
-    """
-    List all the values within a given registry subkey.
-
-    Args:
-        hkey: The Registry Root Entry Key. Either a string or HKey object (Hive)
-            Strings are validated via validate_root_key() function and should be one of the following:
-                "HKEY_CLASSES_ROOT"
-                "HKEY_CURRENT_USER"
-                "HKEY_LOCAL_MACHINE"
-                "HKEY_USERS"
-                "HKEY_CURRENT_CONFIG"
-        subkey: Subkey from which to start recursively from.
-
-    """
-    if isinstance(hkey, str):  # Otherwise its an HKey Object
-        print(f"Computer\\\\{hkey.upper()}\\\\")
-        hkey = validate_root_key(hkey)
+def get_keys(hkey, path):
+    """Yield all subkey names under the given HKey and sub-key path."""
     try:
-        key = winreg.OpenKey(hkey, subkey, 0, winreg.KEY_READ)
-        print(f"\t{subkey}")
-        i = 0
-        while True:
-            try:
-                value_name, value_data, _ = winreg.EnumValue(key, i)
-
-                if value_name:
-                    print(f"\t\t{value_name:<{MAX_PRINT_COL_WIDTH}}{value_data}")
-                else:
-                    print(f"\t\t{'Default':<{MAX_PRINT_COL_WIDTH}}{value_data}")
-                i += 1
-            except OSError:  # Catch OSError when EnumValue runs out of values
-                break
-        winreg.CloseKey(key)
-        print()  # Newline for better readability
-    except FileNotFoundError:
-        print(f"Registry key not found: {subkey}")
-
-
-def list_all_subkey_values_recursive(hkey, subkey=""):
-    """
-    Recursively list all subkeys under a given registry path starting point.
-
-    Args:
-        hkey: The Registry Root Entry Key. Either a string or HKey object (Hive)
-        Strings are validated via validate_root_key() function and should be one of the following:
-            "HKEY_CLASSES_ROOT"
-            "HKEY_CURRENT_USER"
-            "HKEY_LOCAL_MACHINE"
-            "HKEY_USERS"
-            "HKEY_CURRENT_CONFIG"
-
-        subkey: Subkey from which to start recursively from.
-
-    """
-    if isinstance(hkey, str):  # Otherwise its an HKey Object
-        print(f"Computer\\\\{hkey.upper()}\\\\")
-        hkey = validate_root_key(hkey)
-
-    try:
-        with winreg.OpenKeyEx(hkey, subkey, 0, winreg.KEY_READ) as key:
-            list_all_subkey_values(hkey, subkey)
-
-            # Enumerate subkeys at the current level
-            i = 0
+        # Explicitly close handles, otherwise risk of leaks for large traversals
+        with winreg.OpenKey(hkey, path) as key:
+            index = 0
             while True:
                 try:
-                    subkey_name = winreg.EnumKey(key, i)
-                    full_subkey_path = (
-                        f"{subkey}\\{subkey_name}" if subkey else subkey_name
-                    )
-
-                    # Recursively call the function for each subkey
-                    list_all_subkey_values_recursive(hkey, full_subkey_path)
-                    i += 1
-                except OSError:  # Catch OSError when EnumValue runs out of values
+                    yield winreg.EnumKey(key, index)
+                    index += 1
+                except OSError:
                     break
-    except FileNotFoundError:
-        print(f"Registry key not found: {subkey}")
+    except (OSError, FileNotFoundError) as err:
+        msg = f"\n{path} is not a valid path"
+        raise FileNotFoundError(msg) from err
 
 
-def list_all_subkey_recursive(hkey, subkey=""):
-    """
-    Recursively list all subkeys under a given registry path starting point.
-
-    Args:
-        hkey: The Registry Root Entry Key. Either a string or HKey object (Hive)
-            Strings are validated via validate_root_key() function and should be one of the following:
-                "HKEY_CLASSES_ROOT"
-                "HKEY_CURRENT_USER"
-                "HKEY_LOCAL_MACHINE"
-                "HKEY_USERS"
-                "HKEY_CURRENT_CONFIG"
-        subkey: Subkey from which to start recursively from.
-
-    """
-    if isinstance(hkey, str):  # Otherwise its an HKey Object
-        print(f"Computer\\\\{hkey.upper()}\\\\")
-        hkey = validate_root_key(hkey)
-
+def get_values(hkey, path):
+    """Yield all (name, value, type) tuples for values under the given HKey and sub-key path."""
     try:
-        with winreg.OpenKeyEx(hkey, subkey, 0, winreg.KEY_READ) as key:
-            # Enumerate subkeys at the current level
-            i = 0
+        # Explicitly close handles, otherwise risk of leaks for large traversals
+        with winreg.OpenKey(hkey, path) as key:
+            index = 0
             while True:
                 try:
-                    subkey_name = winreg.EnumKey(key, i)
-                    full_subkey_path = (
-                        f"{subkey}\\{subkey_name}" if subkey else subkey_name
-                    )
-                    print(f"\t{full_subkey_path}")
-                    # Recursively call the function for each subkey
-                    list_all_subkey_recursive(hkey, full_subkey_path)
-                    i += 1
-                except OSError:  # Catch OSError when EnumValue runs out of values
+                    yield winreg.EnumValue(key, index)
+                    index += 1
+                except OSError:
                     break
-    except FileNotFoundError:
-        print(f"Registry key not found: {subkey}")
+    except (OSError, FileNotFoundError) as err:
+        msg = f"\n{path} is not a valid path"
+        raise FileNotFoundError(msg) from err
 
 
-def validate_root_key(root_hkey):
-    """
-    Validates the root key against known valid root keys.
+def get_winreg_values(root_hkey, path):
+    r"""
+    Get Windows Registry Values.
+
+    Walks through the Windows Registry printing the Key:Value
+    pairs.
 
     Args:
-        root_hkey (str): The root key to validate.
+        root_hkey:
+            One of the predefined winreg.HKEY_* constants
+                winreg.HKEY_CLASSES_ROOT
+                winreg.HKEY_CURRENT_USER
+                winreg.HKEY_LOCAL_MACHINE
+                winreg.HKEY_USERS
+                winreg.HKEY_CURRENT_CONFIG
+        path:
+            A path string that identifies the sub-key to open.
+            Examples are:
+                'Software\Python'
+                'Software\Python\PythonCore'
+                'SYSTEM\Keyboard Layout'
 
-    Returns:
-        winreg.HKEY_*: The corresponding HKEY constant if valid.
-
-    Raises:
-        KeyError: If the provided root_hkey str is not valid.
+            The exact path will be dependent on root_hkey
+            passed and your Windows platform.
 
     """
-    try:
-        return valid_root_hkeys[root_hkey.upper()]
-    except KeyError:
-        print(
-            f"Invalid root key: {root_hkey}.",
-            f"\nMust be one of: {', '.join(valid_root_hkeys.keys())}",
+
+    # Internal function to get and print the
+    # Key:Value pairs for a given key-path
+    def _print_values_for_path_key(root_hkey, path):
+        for name, value, _ in get_values(root_hkey, path):
+            if name:
+                print(f"\t{name:<{MAX_PRINT_COL_WIDTH}}{value}")
+            else:
+                # '(Default)' entries with a Value are not named, so name it
+                print(f"\t{'(Default)':<{MAX_PRINT_COL_WIDTH}}{value}")
+
+    # Normalise path: title and backslashes
+    path = os.path.join(*path.title().replace(r"/", "\\").split("\\"))  # noqa: PTH118
+    print(f"\n{path}")
+
+    _print_values_for_path_key(root_hkey, path)
+
+    # Iterate through any subkeys on this upper path
+    for subkey in get_keys(root_hkey, path):
+        sub_path = (  # Update path or handle "" edge case
+            f"{path}\\{subkey}" if path else subkey
         )
-        sys.exit(1)
+        print(f"\n{sub_path}")
+
+        _print_values_for_path_key(root_hkey, sub_path)
+
+        try:
+            # Recurse into any lower subkeys under the current subkey
+            for sub_subkey in get_keys(root_hkey, sub_path):
+                get_winreg_values(root_hkey, f"{sub_path}\\{sub_subkey}")
+
+        except RecursionError as err:  # This should not happen, but....
+            print(err)
 
 
 if __name__ == "__main__":
-    initial_path = r"software\\python"
-    # initial_path = r"Software\\Google"
-    # Convert to POSIX path and Title case for consistency
-    initial_path = initial_path.replace(r"/", "\\\\").title()
+    root_hkey = winreg.HKEY_CURRENT_USER
+    hkey_str = "HKEY_CURRENT_USER"
+    root_hkey = winreg.HKEY_LOCAL_MACHINE
+    root_path = r"software\\/\\/\\/\\/\\/\\/PYTHON"
+    # root_path = r"Software\7-Zip"
+    # root_path = r"Software\Google"
+    # root_path = r"SYSTEM//////\\\\\////////keyboard layout"
+    # root_path = r"AppEvents"
+    # root_path = r""
 
-    for this_root_hkey in ["HKEY_CURRENT_USER", "HKEY_LOCAL_MACHINE"]:
-        print(f"\n{'':#^50}\n")
+    print(f"Computer\\\\{hkey_str.upper()}\\\\")
+    get_winreg_values(root_hkey, root_path)
 
-        # list_all_subkey_recursive(this_root_hkey, initial_path)
-        # list_all_subkey_values(
-        #     this_root_hkey, "Software\\Python\\PythonCore\\"
-        # )  # No recursion
-        list_all_subkey_values_recursive(this_root_hkey, initial_path)
+
+# TODO(JB): Test with https://github.com/bitranox/fake_winreg ??
+# TODO(JB): HKEY_CLASSES_ROOT is a subkey of HKEY_LOCAL_MACHINE\Software <- deny or confirm and doc
+# TODO(JB): Print to JSON?
+# TODO(JB): Handle different types passed to func = [int, HKEYType, str]
+def check_key(key):
+    if key is None:
+        raise TypeError("None is not a valid type")  # noqa: TRY003, EM101
+
+    # As an int, or a winreg.HKEY_* constant
+    if isinstance(key, int):
+        if key >= 2**64:  # 64K limit for total size of all values of a key
+            raise OverflowError("The int too big to convert")  # noqa: TRY003, EM101
+        if key not in [
+            winreg.HKEY_CLASSES_ROOT,  # Int should match one of these
+            winreg.HKEY_CURRENT_USER,
+            winreg.HKEY_LOCAL_MACHINE,
+            winreg.HKEY_USERS,
+            winreg.HKEY_CURRENT_CONFIG,
+        ]:
+            raise TypeError("The int is not a valid winreg.HKEY_* type")  # noqa: TRY003, EM101
+
+    # If its a String, try and make it a winreg.HKEY_* constant
+    if isinstance(key, str):
+        try:
+            key = getattr(winreg, key)
+        except AttributeError as err:
+            raise TypeError("The string is not a HKEY_* string") from err  # noqa: TRY003, EM101
+
+    return key
+
+
+def print_hkey_values():
+    print(f"HKEY_CLASSES_ROO    = {winreg.HKEY_CLASSES_ROOT}")
+    print(f"HKEY_CURRENT_USER   = {winreg.HKEY_CURRENT_USER}")
+    print(f"HKEY_LOCAL_MACHINE  = {winreg.HKEY_LOCAL_MACHINE}")
+    print(f"HKEY_USERS          = {winreg.HKEY_USERS}")
+    print(f"HKEY_CURRENT_CONFIG = {winreg.HKEY_CURRENT_CONFIG}")
