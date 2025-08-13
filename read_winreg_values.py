@@ -1,7 +1,32 @@
-import os
 import winreg
 
-MAX_PRINT_COL_WIDTH = 24  # Align 2nd column from 1st column
+MAX_PRINT_TYPE_COL_WIDTH = 17  # Max I've seen is "REG_EXPAND_SZ"
+MAX_PRINT_NAME_COL_WIDTH = 24  # Some are >>100 chars
+MAX_PRINT_VALUE_COL_WIDTH = None  # Not used, no Limit
+
+REG_TYPE_DICT = {
+    0: "REG_NONE",
+    1: "REG_SZ",
+    2: "REG_EXPAND_SZ",
+    3: "REG_BINARY",
+    4: "REG_DWORD",  # 4 is also "REG_DWORD_LITTLE_ENDIAN"
+    5: "REG_DWORD_BIG_ENDIAN",
+    6: "REG_LINK",
+    7: "REG_MULTI_SZ",
+    8: "REG_RESOURCE_LIST",
+    9: "REG_FULL_RESOURCE_DESCRIPTOR",
+    10: "REG_RESOURCE_REQUIREMENTS_LIST",
+    11: "REG_QWORD",  # 11 is also "REG_QWORD_LITTLE_ENDIAN"
+    # xx: Some names have other int values as the Type
+}
+
+HKEY_CONST_LIST = [  # https://docs.python.org/3/library/winreg.html#hkey-constants
+    winreg.HKEY_CLASSES_ROOT,
+    winreg.HKEY_CURRENT_USER,
+    winreg.HKEY_LOCAL_MACHINE,
+    winreg.HKEY_USERS,
+    winreg.HKEY_CURRENT_CONFIG,
+]
 
 
 def get_keys(hkey, path):
@@ -14,11 +39,14 @@ def get_keys(hkey, path):
                 try:
                     yield winreg.EnumKey(key, index)
                     index += 1
-                except OSError:
+                except OSError:  # Expected when no more keys to yield
                     break
-    except (OSError, FileNotFoundError) as err:
+
+    except FileNotFoundError as err:
         msg = f"\n{path} is not a valid path"
         raise FileNotFoundError(msg) from err
+    except PermissionError as err:
+        print(f"{err}: Permission Error: you may need to run the script as Admin.")
 
 
 def get_values(hkey, path):
@@ -31,11 +59,60 @@ def get_values(hkey, path):
                 try:
                     yield winreg.EnumValue(key, index)
                     index += 1
-                except OSError:
+                except OSError:  # Expected when no more values to yield
                     break
-    except (OSError, FileNotFoundError) as err:
+
+    except FileNotFoundError as err:
         msg = f"\n{path} is not a valid path"
         raise FileNotFoundError(msg) from err
+    except PermissionError as err:
+        print(f"{err}: Permission Error: you may need to run the script as Admin.")
+
+
+def _check_root_key(hkey):
+    """
+    Check Valid HKEY.
+
+    Only the following predefined Win Reg keys are supported:
+        HKEY_CLASSES_ROOT
+        HKEY_CURRENT_USER
+        HKEY_LOCAL_MACHINE
+        HKEY_USERS
+        HKEY_CURRENT_CONFIG
+
+    See: https://learn.microsoft.com/en-us/windows/win32/sysinfo/predefined-keys
+    See: https://docs.python.org/3/library/winreg.html#hkey-constants
+
+    Args:
+        hkey: One of 3 possible types:
+            1. A valid WinReg HKEY_* Constant
+                e.g. winreg.HKEY_CLASSES_ROOT
+            2. The int representation of a WinReg HKEY_* Constant
+                e.g. 18446744071562067968
+            3. A string of the HKEY constant name
+                e.g. 'HKEY_CLASSES_ROOT'
+    Return:
+        A valid WinReg HKEY as an int
+
+    """
+    if hkey is None:
+        raise TypeError("None is not a valid type")  # noqa: TRY003, EM101
+
+    # As an int, or a winreg.HKEY_* constant
+    if isinstance(hkey, int):
+        if hkey >= 2**64:  # 64K limit for total size of all values of a key
+            raise OverflowError("The int too big to convert")  # noqa: TRY003, EM101
+        if hkey not in HKEY_CONST_LIST:
+            raise TypeError("The int is not a valid winreg.HKEY_* type")  # noqa: TRY003, EM101
+
+    # If it's a string, try and make it a winreg.HKEY_* constant
+    if isinstance(hkey, str):
+        try:
+            hkey = getattr(winreg, hkey)
+        except AttributeError as err:
+            raise TypeError("The string is not a HKEY_* string") from err  # noqa: TRY003, EM101
+
+    return hkey
 
 
 def get_winreg_values(root_hkey, path):
@@ -47,12 +124,14 @@ def get_winreg_values(root_hkey, path):
 
     Args:
         root_hkey:
-            One of the predefined winreg.HKEY_* constants
-                winreg.HKEY_CLASSES_ROOT
-                winreg.HKEY_CURRENT_USER
-                winreg.HKEY_LOCAL_MACHINE
-                winreg.HKEY_USERS
-                winreg.HKEY_CURRENT_CONFIG
+            One of:
+                1. The predefined winreg.HKEY_* constants
+                    e.g. winreg.HKEY_CURRENT_USER
+                2. A string representation of the HKEY Constant
+                    e.g. "HKEY_CURRENT_USER"
+                3. The integer representation of the winreg.HKEY_* constant
+                    e.g. 18446744071562067968
+
         path:
             A path string that identifies the sub-key to open.
             Examples are:
@@ -65,27 +144,45 @@ def get_winreg_values(root_hkey, path):
 
     """
 
+    # ######################################
     # Internal function to get and print the
     # Key:Value pairs for a given key-path
     def _print_values_for_path_key(root_hkey, path):
-        for name, value, _ in get_values(root_hkey, path):
-            if name:
-                print(f"\t{name:<{MAX_PRINT_COL_WIDTH}}{value}")
-            else:
+        for name, value, type in get_values(root_hkey, path):
+            if not name:
                 # '(Default)' entries with a Value are not named, so name it
-                print(f"\t{'(Default)':<{MAX_PRINT_COL_WIDTH}}{value}")
+                name = "(Default)"
 
-    # Normalise path: title and backslashes
-    path = os.path.join(*path.title().replace(r"/", "\\").split("\\"))  # noqa: PTH118
+            # try:
+            #     name_str = f"{name}"
+            # except UnicodeEncodeError:
+            #     name_str = "UnicodeEncodeError!"
+
+            # try:
+            #     value_res = f"{value}"
+            # except UnicodeEncodeError:
+            #     value_res = "UnicodeEncodeError!"
+
+            print(  # Show the Type if possible, otherwise use what the reg returns
+                f"\t{REG_TYPE_DICT.get(type, str(type)):<{MAX_PRINT_TYPE_COL_WIDTH}}",
+                # f"\t{type}:<{MAX_PRINT_TYPE_COL_WIDTH}",
+                f"{name:<{MAX_PRINT_NAME_COL_WIDTH}}",
+                f"{value}",
+            )
+
+    # ######################################
+
+    root_hkey = _check_root_key(root_hkey)
+
+    path = path.title()  # Follow Reg convention (it's not exact, but looks better)
     print(f"\n{path}")
 
     _print_values_for_path_key(root_hkey, path)
 
     # Iterate through any subkeys on this upper path
     for subkey in get_keys(root_hkey, path):
-        sub_path = (  # Update path or handle "" edge case
-            f"{path}\\{subkey}" if path else subkey
-        )
+        # Update path or handle "" edge case
+        sub_path = f"{path}\\{subkey}" if path else subkey
         print(f"\n{sub_path}")
 
         _print_values_for_path_key(root_hkey, sub_path)
@@ -100,54 +197,69 @@ def get_winreg_values(root_hkey, path):
 
 
 if __name__ == "__main__":
-    root_hkey = winreg.HKEY_CURRENT_USER
-    hkey_str = "HKEY_CURRENT_USER"
+    # root_hkey = winreg.HKEY_CURRENT_USER
+    # root_hkey = "HKEY_CURRENT_USER"
     root_hkey = winreg.HKEY_LOCAL_MACHINE
-    root_path = r"software\\/\\/\\/\\/\\/\\/PYTHON"
     # root_path = r"Software\7-Zip"
     # root_path = r"Software\Google"
     # root_path = r"SYSTEM//////\\\\\////////keyboard layout"
     # root_path = r"AppEvents"
-    # root_path = r""
+    # # root_path = r""
+    root_path = ""
+    # root_path = "System\Controlset001\Control\Class\{4D36E96C-E325-11Ce-Bfc1-08002Be10318}\Configuration\Reset\Driver"
+    # root_path = "HARDWARE\DEVICEMAP\VIDEO"
+    # root_path = r"Software\Python"
+    # root_path = "\SOFTWARE\Classes\.py"
+    # root_path = r"Software\Classes\.zsh\OpenWithProgids"
+    # root_path = r"Software\Microsoft\Input\Locales\Loc_0039\Inputmethods"
+    # root_path = r"Software\Microsoft\Windows Nt\Currentversion\FontMapperFamilyFallback"
+    # root_path = r"Software\Microsoft\Windows Nt\Currentversion"
+    # root_path = r"Software\Classes\AppUserModelId\c:/ProgramData/ASUS/AsusSurvey/AsusSurvey.exe"  # Works
+    # --> Software\Classes\Appusermodelid\C:/Programdata/Asus/Asussurvey/Asussurvey.Exe  # No Backslash in key
 
-    print(f"Computer\\\\{hkey_str.upper()}\\\\")
-    get_winreg_values(root_hkey, root_path)
+    # get_winreg_values(root_hkey, root_path)
+
+    for this_hkey in HKEY_CONST_LIST:
+        get_winreg_values(this_hkey, root_path)
 
 
-# TODO(JB): Test with https://github.com/bitranox/fake_winreg ??
 # TODO(JB): HKEY_CLASSES_ROOT is a subkey of HKEY_LOCAL_MACHINE\Software <- deny or confirm and doc
 # TODO(JB): Print to JSON?
-# TODO(JB): Handle different types passed to func = [int, HKEYType, str]
-def check_key(key):
-    if key is None:
-        raise TypeError("None is not a valid type")  # noqa: TRY003, EM101
-
-    # As an int, or a winreg.HKEY_* constant
-    if isinstance(key, int):
-        if key >= 2**64:  # 64K limit for total size of all values of a key
-            raise OverflowError("The int too big to convert")  # noqa: TRY003, EM101
-        if key not in [
-            winreg.HKEY_CLASSES_ROOT,  # Int should match one of these
-            winreg.HKEY_CURRENT_USER,
-            winreg.HKEY_LOCAL_MACHINE,
-            winreg.HKEY_USERS,
-            winreg.HKEY_CURRENT_CONFIG,
-        ]:
-            raise TypeError("The int is not a valid winreg.HKEY_* type")  # noqa: TRY003, EM101
-
-    # If its a String, try and make it a winreg.HKEY_* constant
-    if isinstance(key, str):
-        try:
-            key = getattr(winreg, key)
-        except AttributeError as err:
-            raise TypeError("The string is not a HKEY_* string") from err  # noqa: TRY003, EM101
-
-    return key
+# TODO(JB): Add Value Types to output
+# FIXME(JB): HKEY_CURRENT_USER\Software\Classes\AppUserModelId\C:/ProgramData/ASUS/AsusSurvey/AsusSurvey.exe
+#           |-----------------|--------|-------|--------------|---------------------------------------------|
+# SubKeys-> |HKEY_CURRENT_USER|Software|Classes|AppUserModelId|C:/ProgramData/ASUS/AsusSurvey/AsusSurvey.exe|
+# SubKeys-> |--------1--------|----2---|---3---|-------4------|----------------------5----------------------|
+#           You can't have backslashes in a subkey name, it needs to be forward-slashes like above
+#           Cant use this as a guard: os.path.join(*path.title().replace(r"/", "\\").split("\\"))
+# TODO(JB): May need to set PS console to "chcp 65001" to display correct
 
 
 def print_hkey_values():
-    print(f"HKEY_CLASSES_ROO    = {winreg.HKEY_CLASSES_ROOT}")
+    print(f"HKEY_CLASSES_ROOT   = {winreg.HKEY_CLASSES_ROOT}")
     print(f"HKEY_CURRENT_USER   = {winreg.HKEY_CURRENT_USER}")
     print(f"HKEY_LOCAL_MACHINE  = {winreg.HKEY_LOCAL_MACHINE}")
     print(f"HKEY_USERS          = {winreg.HKEY_USERS}")
     print(f"HKEY_CURRENT_CONFIG = {winreg.HKEY_CURRENT_CONFIG}")
+
+
+def print_reg_types():
+    # https://docs.python.org/3/library/winreg.html#value-types
+    print(f"REG_NONE                       = {winreg.REG_NONE}")
+    print(f"REG_SZ                         = {winreg.REG_SZ}")
+    print(f"REG_EXPAND_SZ                  = {winreg.REG_EXPAND_SZ}")
+    print(f"REG_BINARY                     = {winreg.REG_BINARY}")
+    print(f"REG_DWORD                      = {winreg.REG_DWORD}")
+    print(
+        f"REG_DWORD_LITTLE_ENDIAN        = {winreg.REG_DWORD_LITTLE_ENDIAN}"
+    )  # == winreg.REG_DWORD
+    print(f"REG_DWORD_BIG_ENDIAN           = {winreg.REG_DWORD_BIG_ENDIAN}")
+    print(f"REG_LINK                       = {winreg.REG_LINK}")
+    print(f"REG_MULTI_SZ                   = {winreg.REG_MULTI_SZ}")
+    print(f"REG_RESOURCE_LIST              = {winreg.REG_RESOURCE_LIST}")
+    print(f"REG_FULL_RESOURCE_DESCRIPTOR   = {winreg.REG_FULL_RESOURCE_DESCRIPTOR}")
+    print(f"REG_RESOURCE_REQUIREMENTS_LIST = {winreg.REG_RESOURCE_REQUIREMENTS_LIST}")
+    print(f"REG_QWORD                      = {winreg.REG_QWORD}")
+    print(
+        f"REG_QWORD_LITTLE_ENDIAN        = {winreg.REG_QWORD_LITTLE_ENDIAN}"
+    )  # == winreg.REG_QWORD
