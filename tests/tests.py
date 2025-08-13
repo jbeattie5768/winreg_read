@@ -148,7 +148,7 @@ def test_get_winreg_values_simple(monkeypatch):
     # Patch print to capture output
     # Only testing the print statements really
     with patch("builtins.print") as mock_print:
-        read_winreg_values.get_winreg_values(
+        read_winreg_values.traverse_winreg_for_values(
             read_winreg_values.winreg.HKEY_CURRENT_USER, "Software\\Test"
         )
 
@@ -185,7 +185,7 @@ def test_get_winreg_values_recursion(monkeypatch):
     # Only testing the print statements really
     with patch("builtins.print") as mock_print:
         breakpoint
-        read_winreg_values.get_winreg_values(
+        read_winreg_values.traverse_winreg_for_values(
             read_winreg_values.winreg.HKEY_CURRENT_USER, "Root"
         )
 

@@ -1,3 +1,4 @@
+import argparse
 import winreg
 
 MAX_PRINT_TYPE_COL_WIDTH = 17  # Max I've seen is "REG_EXPAND_SZ"
@@ -40,6 +41,24 @@ HKEY_CONST_DICT = {  # https://docs.python.org/3/library/winreg.html#hkey-consta
     "HKEY_USERS": winreg.HKEY_USERS,
     "HKEY_CURRENT_CONFIG": winreg.HKEY_CURRENT_CONFIG,
 }
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+
+    # Mandatory
+    parser.add_argument(
+        "-k", "--key", "--hkey", help="Enter HKey, e.g. 'HKEY_CURRENT_USER'."
+    )
+
+    parser.add_argument(
+        "-p",
+        "--path",
+        "--subkey",
+        help="Subkey-path to traverse from, e.g. 'Software\\python'",
+    )
+
+    return parser.parse_args()
 
 
 def get_keys(hkey, path):
@@ -130,11 +149,11 @@ def _check_root_key(hkey):
     return hkey
 
 
-def get_winreg_values(root_hkey, path):
+def traverse_winreg_for_values(root_hkey, subkey_path):
     r"""
     Get Windows Registry Values.
 
-    Walks through the Windows Registry printing the Key:Value
+    Traverses the Windows Registry printing the Key:Value
     pairs.
 
     Args:
@@ -147,56 +166,51 @@ def get_winreg_values(root_hkey, path):
                 3. The integer representation of the winreg.HKEY_* constant
                     e.g. 18446744071562067968
 
-        path:
-            A path string that identifies the sub-key to open.
+        subkey_path:
+            A string that identifies the key path to start traversing from.
             Examples are:
-                'Software\Python'
-                'Software\Python\PythonCore'
-                'SYSTEM\Keyboard Layout'
+                r'Software\Python'
+                r'Software\Python\PythonCore'
+                r'SYSTEM\Keyboard Layout'
 
-            The exact path will be dependent on root_hkey
+            The exact subkey-path will be dependent on root_hkey
             passed and your Windows platform.
 
     """
 
     # ######################################
     # Internal function to get and print the
-    # Key:Value pairs for a given key-path
+    # Key:Value pairs for a given key-path as
+    # spaced cols:
+    #   Type         Name         Value
+    #
     def _print_values_for_path_key(root_hkey, path):
         for name, value, type in get_values(root_hkey, path):
             if not name:
-                # '(Default)' entries with a Value are not named, so name it
-                name = "(Default)"
-
-            # try:
-            #     name_str = f"{name}"
-            # except UnicodeEncodeError:
-            #     name_str = "UnicodeEncodeError!"
-
-            # try:
-            #     value_res = f"{value}"
-            # except UnicodeEncodeError:
-            #     value_res = "UnicodeEncodeError!"
+                # '(Default)' entries with a Value are not named
+                name = "(Default)"  # ...so name it
 
             print(  # Show the Type if possible, otherwise use what the reg returns
                 f"\t{REG_TYPE_DICT.get(type, str(type)):<{MAX_PRINT_TYPE_COL_WIDTH}}",
-                # f"\t{type}:<{MAX_PRINT_TYPE_COL_WIDTH}",
                 f"{name:<{MAX_PRINT_NAME_COL_WIDTH}}",
                 f"{value}",
             )
 
     # ######################################
-
+    # Check passed args
     root_hkey = _check_root_key(root_hkey)
+    path = subkey_path.title()  # Follow Win Reg convention
+    # Not exact, but close enough
 
-    path = path.title()  # Follow Reg convention (it's not exact, but looks better)
+    # ######################################
+    # Main Functionality
     print(f"\nComputer\\{HKEY_CONST_DICT[root_hkey]}\\{path}")
 
     _print_values_for_path_key(root_hkey, path)
 
     # Iterate through any subkeys on this upper path
     for subkey in get_keys(root_hkey, path):
-        # Update path or handle "" edge case
+        # Update path, or handle no path ("") case
         sub_path = f"{path}\\{subkey}" if path else subkey
         print(f"\nComputer\\{HKEY_CONST_DICT[root_hkey]}\\{sub_path}")
 
@@ -205,42 +219,19 @@ def get_winreg_values(root_hkey, path):
         try:
             # Recurse into any lower subkeys under the current subkey
             for sub_subkey in get_keys(root_hkey, sub_path):
-                get_winreg_values(root_hkey, f"{sub_path}\\{sub_subkey}")
+                traverse_winreg_for_values(root_hkey, f"{sub_path}\\{sub_subkey}")
 
         except RecursionError as err:  # This should not happen, but....
             print(err)
 
 
+def walk_winreg():
+    """Script Main Function."""
+    args = parse_arguments()
+
+    # Error checking on passed args done in function
+    traverse_winreg_for_values(args.key, args.path)
+
+
 if __name__ == "__main__":
-    root_hkey = winreg.HKEY_CURRENT_USER
-    root_path = r"Software\Python"  # List User Python installs
-    # root_path = r"Software\Classes\.py\OpenWithProgids"  # .py files associated with
-    # root_path = r"Software\Classes\AppUserModelId\c:/ProgramData/ASUS/AsusSurvey/AsusSurvey.exe"  # Fwd slash in key
-    # root_path = r"Software\Classes\AppUserModelId"  # Fwd slash in key
-    # root_path = ""  # Not recommended for all HKey types
-
-    # root_hkey = winreg.HKEY_LOCAL_MACHINE  # Possible PermissionError's
-    # root_path = r"Software\Python"  # List System 'Pythoncore' installs
-    # root_path = r"HARDWARE\DEVICEMAP\VIDEO"  # Unusual Name:Value
-    # root_path = r"Software\Microsoft\Input\Locales\Loc_0039\Inputmethods"  # Unusual Char
-    # root_path = r"Software\Microsoft\Windows Nt\Currentversion\FontMapperFamilyFallback"  # Char Encoding
-    # root_path = r"System\Controlset001\Control\Class\{4D36E96C-E325-11Ce-Bfc1-08002Be10318}\Configuration\Reset"  # Unusual Types
-    # root_path = ""  # Not recommended
-
-    # root_hkey = winreg.HKEY_CLASSES_ROOT
-    # root_path = s"Wow6432Node\Appid\OneDrive.EXE"  # Errors: Reg does not work on my Laptop for this entry
-    # root_path = r"Installer\Dependencies"  # Mentions System Python
-    # root_path = ""  # Not recommended, likely get error unless you have a "perfect" Win Reg
-
-    # root_hkey = winreg.HKEY_USERS
-    # root_path = ""  # Not recommended, nothing of interest
-
-    # root_hkey = winreg.HKEY_CURRENT_CONFIG
-    # root_path = ""  # Pretty much empty for me
-
-    get_winreg_values(root_hkey, root_path)
-
-
-# TODO(JB): Print to JSON?
-# TODO(JB): Add HKey when printing Path. SOme PAths are long, but its better to have the HKe constant name included
-# TODO(JB): May need to set PS console to "chcp 65001" to display correct
+    walk_winreg()
