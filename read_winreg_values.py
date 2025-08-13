@@ -28,6 +28,19 @@ HKEY_CONST_LIST = [  # https://docs.python.org/3/library/winreg.html#hkey-consta
     winreg.HKEY_CURRENT_CONFIG,
 ]
 
+HKEY_CONST_DICT = {  # https://docs.python.org/3/library/winreg.html#hkey-constants
+    winreg.HKEY_CLASSES_ROOT: "HKEY_CLASSES_ROOT",
+    winreg.HKEY_CURRENT_USER: "HKEY_CURRENT_USER",
+    winreg.HKEY_LOCAL_MACHINE: "HKEY_LOCAL_MACHINE",
+    winreg.HKEY_USERS: "HKEY_USERS",
+    winreg.HKEY_CURRENT_CONFIG: "HKEY_CURRENT_CONFIG",
+    "HKEY_CLASSES_ROOT": winreg.HKEY_CLASSES_ROOT,
+    "HKEY_CURRENT_USER": winreg.HKEY_CURRENT_USER,
+    "HKEY_LOCAL_MACHINE": winreg.HKEY_LOCAL_MACHINE,
+    "HKEY_USERS": winreg.HKEY_USERS,
+    "HKEY_CURRENT_CONFIG": winreg.HKEY_CURRENT_CONFIG,
+}
+
 
 def get_keys(hkey, path):
     """Yield all subkey names under the given HKey and sub-key path."""
@@ -108,8 +121,10 @@ def _check_root_key(hkey):
     # If it's a string, try and make it a winreg.HKEY_* constant
     if isinstance(hkey, str):
         try:
-            hkey = getattr(winreg, hkey)
-        except AttributeError as err:
+            hkey = HKEY_CONST_DICT[
+                hkey
+            ]  # Alternatively use getattr(winreg, hkey) & AttributeError
+        except KeyError as err:
             raise TypeError("The string is not a HKEY_* string") from err  # noqa: TRY003, EM101
 
     return hkey
@@ -175,7 +190,7 @@ def get_winreg_values(root_hkey, path):
     root_hkey = _check_root_key(root_hkey)
 
     path = path.title()  # Follow Reg convention (it's not exact, but looks better)
-    print(f"\n{path}")
+    print(f"\nComputer\\{HKEY_CONST_DICT[root_hkey]}\\{path}")
 
     _print_values_for_path_key(root_hkey, path)
 
@@ -183,7 +198,7 @@ def get_winreg_values(root_hkey, path):
     for subkey in get_keys(root_hkey, path):
         # Update path or handle "" edge case
         sub_path = f"{path}\\{subkey}" if path else subkey
-        print(f"\n{sub_path}")
+        print(f"\nComputer\\{HKEY_CONST_DICT[root_hkey]}\\{sub_path}")
 
         _print_values_for_path_key(root_hkey, sub_path)
 
@@ -197,69 +212,35 @@ def get_winreg_values(root_hkey, path):
 
 
 if __name__ == "__main__":
-    # root_hkey = winreg.HKEY_CURRENT_USER
-    # root_hkey = "HKEY_CURRENT_USER"
-    root_hkey = winreg.HKEY_LOCAL_MACHINE
-    # root_path = r"Software\7-Zip"
-    # root_path = r"Software\Google"
-    # root_path = r"SYSTEM//////\\\\\////////keyboard layout"
-    # root_path = r"AppEvents"
-    # # root_path = r""
-    root_path = ""
-    # root_path = "System\Controlset001\Control\Class\{4D36E96C-E325-11Ce-Bfc1-08002Be10318}\Configuration\Reset\Driver"
-    # root_path = "HARDWARE\DEVICEMAP\VIDEO"
-    # root_path = r"Software\Python"
-    # root_path = "\SOFTWARE\Classes\.py"
-    # root_path = r"Software\Classes\.zsh\OpenWithProgids"
-    # root_path = r"Software\Microsoft\Input\Locales\Loc_0039\Inputmethods"
-    # root_path = r"Software\Microsoft\Windows Nt\Currentversion\FontMapperFamilyFallback"
-    # root_path = r"Software\Microsoft\Windows Nt\Currentversion"
-    # root_path = r"Software\Classes\AppUserModelId\c:/ProgramData/ASUS/AsusSurvey/AsusSurvey.exe"  # Works
-    # --> Software\Classes\Appusermodelid\C:/Programdata/Asus/Asussurvey/Asussurvey.Exe  # No Backslash in key
+    root_hkey = winreg.HKEY_CURRENT_USER
+    root_path = r"Software\Python"  # List User Python installs
+    # root_path = r"Software\Classes\.py\OpenWithProgids"  # .py files associated with
+    # root_path = r"Software\Classes\AppUserModelId\c:/ProgramData/ASUS/AsusSurvey/AsusSurvey.exe"  # Fwd slash in key
+    # root_path = r"Software\Classes\AppUserModelId"  # Fwd slash in key
+    # root_path = ""  # Not recommended for all HKey types
 
-    # get_winreg_values(root_hkey, root_path)
+    # root_hkey = winreg.HKEY_LOCAL_MACHINE  # Possible PermissionError's
+    # root_path = r"Software\Python"  # List System 'Pythoncore' installs
+    # root_path = r"HARDWARE\DEVICEMAP\VIDEO"  # Unusual Name:Value
+    # root_path = r"Software\Microsoft\Input\Locales\Loc_0039\Inputmethods"  # Unusual Char
+    # root_path = r"Software\Microsoft\Windows Nt\Currentversion\FontMapperFamilyFallback"  # Char Encoding
+    # root_path = r"System\Controlset001\Control\Class\{4D36E96C-E325-11Ce-Bfc1-08002Be10318}\Configuration\Reset"  # Unusual Types
+    # root_path = ""  # Not recommended
 
-    for this_hkey in HKEY_CONST_LIST:
-        get_winreg_values(this_hkey, root_path)
+    # root_hkey = winreg.HKEY_CLASSES_ROOT
+    # root_path = s"Wow6432Node\Appid\OneDrive.EXE"  # Errors: Reg does not work on my Laptop for this entry
+    # root_path = r"Installer\Dependencies"  # Mentions System Python
+    # root_path = ""  # Not recommended, likely get error unless you have a "perfect" Win Reg
+
+    # root_hkey = winreg.HKEY_USERS
+    # root_path = ""  # Not recommended, nothing of interest
+
+    # root_hkey = winreg.HKEY_CURRENT_CONFIG
+    # root_path = ""  # Pretty much empty for me
+
+    get_winreg_values(root_hkey, root_path)
 
 
-# TODO(JB): HKEY_CLASSES_ROOT is a subkey of HKEY_LOCAL_MACHINE\Software <- deny or confirm and doc
 # TODO(JB): Print to JSON?
-# TODO(JB): Add Value Types to output
-# FIXME(JB): HKEY_CURRENT_USER\Software\Classes\AppUserModelId\C:/ProgramData/ASUS/AsusSurvey/AsusSurvey.exe
-#           |-----------------|--------|-------|--------------|---------------------------------------------|
-# SubKeys-> |HKEY_CURRENT_USER|Software|Classes|AppUserModelId|C:/ProgramData/ASUS/AsusSurvey/AsusSurvey.exe|
-# SubKeys-> |--------1--------|----2---|---3---|-------4------|----------------------5----------------------|
-#           You can't have backslashes in a subkey name, it needs to be forward-slashes like above
-#           Cant use this as a guard: os.path.join(*path.title().replace(r"/", "\\").split("\\"))
+# TODO(JB): Add HKey when printing Path. SOme PAths are long, but its better to have the HKe constant name included
 # TODO(JB): May need to set PS console to "chcp 65001" to display correct
-
-
-def print_hkey_values():
-    print(f"HKEY_CLASSES_ROOT   = {winreg.HKEY_CLASSES_ROOT}")
-    print(f"HKEY_CURRENT_USER   = {winreg.HKEY_CURRENT_USER}")
-    print(f"HKEY_LOCAL_MACHINE  = {winreg.HKEY_LOCAL_MACHINE}")
-    print(f"HKEY_USERS          = {winreg.HKEY_USERS}")
-    print(f"HKEY_CURRENT_CONFIG = {winreg.HKEY_CURRENT_CONFIG}")
-
-
-def print_reg_types():
-    # https://docs.python.org/3/library/winreg.html#value-types
-    print(f"REG_NONE                       = {winreg.REG_NONE}")
-    print(f"REG_SZ                         = {winreg.REG_SZ}")
-    print(f"REG_EXPAND_SZ                  = {winreg.REG_EXPAND_SZ}")
-    print(f"REG_BINARY                     = {winreg.REG_BINARY}")
-    print(f"REG_DWORD                      = {winreg.REG_DWORD}")
-    print(
-        f"REG_DWORD_LITTLE_ENDIAN        = {winreg.REG_DWORD_LITTLE_ENDIAN}"
-    )  # == winreg.REG_DWORD
-    print(f"REG_DWORD_BIG_ENDIAN           = {winreg.REG_DWORD_BIG_ENDIAN}")
-    print(f"REG_LINK                       = {winreg.REG_LINK}")
-    print(f"REG_MULTI_SZ                   = {winreg.REG_MULTI_SZ}")
-    print(f"REG_RESOURCE_LIST              = {winreg.REG_RESOURCE_LIST}")
-    print(f"REG_FULL_RESOURCE_DESCRIPTOR   = {winreg.REG_FULL_RESOURCE_DESCRIPTOR}")
-    print(f"REG_RESOURCE_REQUIREMENTS_LIST = {winreg.REG_RESOURCE_REQUIREMENTS_LIST}")
-    print(f"REG_QWORD                      = {winreg.REG_QWORD}")
-    print(
-        f"REG_QWORD_LITTLE_ENDIAN        = {winreg.REG_QWORD_LITTLE_ENDIAN}"
-    )  # == winreg.REG_QWORD

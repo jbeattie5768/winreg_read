@@ -93,6 +93,21 @@ Let give tt a go and see what we end up with....
 
 ----
 
+Issues:
+
+__Non-CONSTANT Type Values__: Some Type entries are numbers and not one of the Type constants.
+
+__Forward Slash in Key Name__: At least one Key has forward slashes in it and for the Win Reg you cannot have backslashes in a key name, e.g.
+HKEY_CURRENT_USER\Software\Classes\AppUserModelId\C:/ProgramData/ASUS/AsusSurvey/AsusSurvey.exe
+The key is "C:/ProgramData/ASUS/AsusSurvey/AsusSurvey.exe", which means I can't use this to normalise slashes:
+os.path.join(*path.title().replace(r"/", "\\").split("\\"))
+
+__None Standard Characters__: There are some locale names that threw a UniDecodeError - I guess they did not match my console locale setting. Best to change your console default, for PS `chcp 65001` (UTF-8) worked for me...or just don't traverse those keys.
+
+__Permission errors__: When you open WinRegEdit.exe it open in Admin mode. There are some keys you will need Admin permission to access. I catch and continue for those, but you may need to run the script as admin to access all the keys.
+
+Win Reg Errors: There are some entries in my Win Reg that do not work, even in WinRegEdit.exe. Nothing I can do except fix the Windows Registry itself.
+
 ## Further Reading
 
 - [Registry Hives](https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry-hives)

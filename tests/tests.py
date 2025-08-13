@@ -37,9 +37,12 @@ def test_check_root_key_overflow(type):
 def test_get_keys_yields_keys():
     with patch("read_winreg_values.winreg.OpenKey") as mock_openkey:
         mock_key = MagicMock()
+
         mock_openkey.return_value.__enter__.return_value = mock_key
+
         mock_key.__enter__.return_value = mock_key
         mock_key.__exit__.return_value = False
+
         with patch(
             "read_winreg_values.winreg.EnumKey", side_effect=["sub1", "sub2", OSError]
         ):
@@ -48,13 +51,16 @@ def test_get_keys_yields_keys():
                     read_winreg_values.winreg.HKEY_CURRENT_USER, "Some\\Path"
                 )
             )
+
             assert keys == ["sub1", "sub2"]
 
 
 def test_get_values_yields_values():
     with patch("read_winreg_values.winreg.OpenKey") as mock_openkey:
         mock_key = MagicMock()
+
         mock_openkey.return_value.__enter__.return_value = mock_key
+
         with patch(
             "read_winreg_values.winreg.EnumValue",
             side_effect=[("name", "val", 1), OSError],
@@ -64,6 +70,7 @@ def test_get_values_yields_values():
                     read_winreg_values.winreg.HKEY_CURRENT_USER, "Some\\Path"
                 )
             )
+
             assert values == [("name", "val", 1)]
 
 
@@ -87,37 +94,78 @@ def test_get_values_file_not_found():
             )
 
 
-def test_get_winreg_values_simple(monkeypatch):
-    # Mock get_keys to return one subkey, then no sub-subkeys
-    # Only testing the print statements really
-    monkeypatch.setattr(read_winreg_values, "get_keys", lambda h, p: iter(["subkey"]))
+def test_get_keys_permission_error():
+    with patch(
+        "read_winreg_values.winreg.OpenKey",
+        side_effect=PermissionError("Access denied"),
+    ):
+        with patch("builtins.print") as mock_print:
+            # Should not yield any keys, just print the error
+            result = list(
+                read_winreg_values.get_keys(
+                    read_winreg_values.winreg.HKEY_CURRENT_USER, "some\\path"
+                )
+            )
+            assert result == []
+            mock_print.assert_called_once()
+            assert "Permission Error" in mock_print.call_args[0][0]
 
-    # Mock get_values to return one value for each key
-    def fake_get_values(h, p):
-        if p.endswith("subkey"):
-            return iter([("name2", "val2", 1)])
+
+def test_get_values_permission_error():
+    with patch(
+        "read_winreg_values.winreg.OpenKey",
+        side_effect=PermissionError("Access denied"),
+    ):
+        with patch("builtins.print") as mock_print:
+            # Should not yield any values, just print the error
+            result = list(
+                read_winreg_values.get_values(
+                    read_winreg_values.winreg.HKEY_CURRENT_USER, "some\\path"
+                )
+            )
+            assert result == []
+            mock_print.assert_called_once()
+            assert "Permission Error" in mock_print.call_args[0][0]
+
+
+def test_get_winreg_values_simple(monkeypatch):
+    def fake_get_keys(h, p):
+        if p == "Software\\Test":
+            return iter(["Subkey"])
         else:
-            return iter([("name1", "val1", 1)])
+            return iter([])
+
+    def fake_get_values(h, p):
+        if p.endswith("Subkey"):
+            return iter([("name2", "val2", "type2")])
+        else:
+            return iter([("name1", "val1", "type1")])
+
+    monkeypatch.setattr(read_winreg_values, "get_keys", fake_get_keys)
 
     monkeypatch.setattr(read_winreg_values, "get_values", fake_get_values)
+
     # Patch print to capture output
+    # Only testing the print statements really
     with patch("builtins.print") as mock_print:
         read_winreg_values.get_winreg_values(
             read_winreg_values.winreg.HKEY_CURRENT_USER, "Software\\Test"
         )
-        # Check that print was called with expected values
+
+        # Check that print was called for each key and value
+        # Using a multi-line print in the code, with defined
+        # spacing as well, is not making this any easier
         calls = [
-            call("\nSoftware\\Test"),
-            call("\tname1                   val1"),
-            call("\nSoftware\\Test\\subkey"),
-            call("\tname2                   val2"),
+            call("\nComputer\\HKEY_CURRENT_USER\\Software\\Test"),
+            call("\ttype1            ", "name1                   ", "val1"),
+            call("\nComputer\\HKEY_CURRENT_USER\\Software\\Test\\Subkey"),
+            call("\ttype2            ", "name2                   ", "val2"),
         ]
+
         mock_print.assert_has_calls(calls, any_order=False)
 
 
 def test_get_winreg_values_recursion(monkeypatch):
-    # Simulate a tree: root -> sub1 -> sub2
-    # Only testing the print statements really
     def fake_get_keys(h, p):
         if p == "Root":
             return iter(["Sub1"])
@@ -126,25 +174,31 @@ def test_get_winreg_values_recursion(monkeypatch):
         else:
             return iter([])
 
-    monkeypatch.setattr(read_winreg_values, "get_keys", fake_get_keys)
-
-    # Simulate values at each level
     def fake_get_values(h, p):
         return iter([(p, "value", 1)])
 
+    monkeypatch.setattr(read_winreg_values, "get_keys", fake_get_keys)
+
     monkeypatch.setattr(read_winreg_values, "get_values", fake_get_values)
+
+    # Patch print to capture output
+    # Only testing the print statements really
     with patch("builtins.print") as mock_print:
         breakpoint
         read_winreg_values.get_winreg_values(
             read_winreg_values.winreg.HKEY_CURRENT_USER, "Root"
         )
+
         # Check that print was called for each key and value
+        # Using a multi-line print in the code, with defined
+        # spacing as well, is not making this any easier
         expected = [
-            call("\nRoot"),
-            call("\tRoot                    value"),
-            call("\nRoot\\Sub1"),
-            call("\tRoot\\Sub1               value"),
-            call("\nRoot\\Sub1\\Sub2"),
-            call("\tRoot\\Sub1\\Sub2          value"),
+            call("\nComputer\\HKEY_CURRENT_USER\\Root"),
+            call("\tREG_SZ           ", "Root                    ", "value"),
+            call("\nComputer\\HKEY_CURRENT_USER\\Root\\Sub1"),
+            call("\tREG_SZ           ", "Root\\Sub1               ", "value"),
+            call("\nComputer\\HKEY_CURRENT_USER\\Root\\Sub1\\Sub2"),
+            call("\tREG_SZ           ", "Root\\Sub1\\Sub2          ", "value"),
         ]
+
         mock_print.assert_has_calls(expected, any_order=False)
