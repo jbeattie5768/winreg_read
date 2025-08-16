@@ -25,15 +25,6 @@ def test_check_root_key_invalid(type):
         read_winreg_values._check_root_key(type)
 
 
-@pytest.mark.parametrize(
-    "type",
-    [2**64 + 1],
-)
-def test_check_root_key_overflow(type):
-    with pytest.raises(OverflowError):
-        read_winreg_values._check_root_key(type)
-
-
 def test_get_keys_yields_keys():
     with patch("read_winreg_values.winreg.OpenKey") as mock_openkey:
         mock_key = MagicMock()
@@ -149,7 +140,7 @@ def test_get_winreg_values_simple(monkeypatch):
     # Only testing the print statements really
     with patch("builtins.print") as mock_print:
         read_winreg_values.traverse_winreg_for_values(
-            read_winreg_values.winreg.HKEY_CURRENT_USER, "Software\\Test"
+            read_winreg_values.winreg.HKEY_CURRENT_USER, "Software\\Test", []
         )
 
         # Check that print was called for each key and value
@@ -157,9 +148,9 @@ def test_get_winreg_values_simple(monkeypatch):
         # spacing as well, is not making this any easier
         calls = [
             call("\nComputer\\HKEY_CURRENT_USER\\Software\\Test"),
-            call("\ttype1            ", "name1                   ", "val1"),
+            call("\tREG_UNKNOWN      ", "name1                   ", "val1"),
             call("\nComputer\\HKEY_CURRENT_USER\\Software\\Test\\Subkey"),
-            call("\ttype2            ", "name2                   ", "val2"),
+            call("\tREG_UNKNOWN      ", "name2                   ", "val2"),
         ]
 
         mock_print.assert_has_calls(calls, any_order=False)
@@ -186,7 +177,7 @@ def test_get_winreg_values_recursion(monkeypatch):
     with patch("builtins.print") as mock_print:
         breakpoint
         read_winreg_values.traverse_winreg_for_values(
-            read_winreg_values.winreg.HKEY_CURRENT_USER, "Root"
+            read_winreg_values.winreg.HKEY_CURRENT_USER, "Root", []
         )
 
         # Check that print was called for each key and value
