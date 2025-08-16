@@ -1,3 +1,10 @@
+"""
+Updated to work under Python 3.13+.
+
+1. Changed winreg.QueryValue() to winreg.QueryValueEx()
+2. Unpacked results of winreg.QueryValueEx() and returned 'value' only
+
+"""
 # Display most-preferred environments.
 # Assumes a 64-bit operating system
 # Does not correctly handle PythonCore compatibility

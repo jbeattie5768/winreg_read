@@ -1,3 +1,10 @@
+"""
+Updated to work under Python 3.13+.
+
+1. Changed winreg.QueryValue() to winreg.QueryValueEx()
+2. Unpacked results of winreg.QueryValueEx() and returned 'value' only
+
+"""
 # Only lists per-user PythonCore registrations
 # Uses fallback values as described in PEP 514
 

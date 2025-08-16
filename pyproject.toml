@@ -1,7 +1,7 @@
 [project]
-name = "pep514-winreg"
+name = "winreg_read"
 version = "0.1.0"
-description = "PEP 514 Sample Code"
+description = "Read Win Reg Values"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []

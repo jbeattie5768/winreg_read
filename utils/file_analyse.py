@@ -6,10 +6,10 @@ Ran these various command in the console.
 Can run the script though, just change the hardcoded files.
 
 The command to start the console was:
-    uv run --with pandas python
+    uv run python
 
 Alternatively to run the script:
-    uv run --with pandas python file_analyse.py
+    uv run python file_analyse.py
 
 """
 
