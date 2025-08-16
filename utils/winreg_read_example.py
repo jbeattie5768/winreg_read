@@ -1,9 +1,10 @@
 """
-Simplest Read with WinReg
+Simplest Read with WinReg.
 
 * The Win Registry is a series of root keys, each with subkeys and values.
-* The root keys we are concerned with are HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE.
-* Value type is currently always null-terminated strings ('winreg.REG_SZ' == 1).
+* The root keys we are mostly concerned with at the moment is HKEY_CURRENT_USER.
+* Value type is currently always null-terminated strings ('winreg.REG_SZ' == 1) for
+* these entries I am getting, ignore it for the moment.
 * We wil only be connecting locally, otherwise see `winreg.ConnectRegistry()`.
 """
 
@@ -16,11 +17,12 @@ key_handle = winreg.OpenKeyEx(
     access=winreg.KEY_READ,
 )  # Default is KEY_READ
 
-# We don't care about returned type, its always a string, just worry about the value
+# We don't care about returned type at the moment, just worry about the value
 dis_value, _ = winreg.QueryValueEx(
     key_handle,  # Key Handle Object
     "DisplayName",
 )  # 'DisplayName' is a value in the subkey
+
 uri_value, _ = winreg.QueryValueEx(
     key_handle, "SupportUrl"
 )  # 'SupportUrl' is a value in the subkey

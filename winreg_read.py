@@ -68,7 +68,7 @@ def _parse_arguments():
         "-e",
         "--exclude",
         nargs="*",
-        help="""List of Key-Paths to exclude from being traversed, i.e. ignored. 
+        help="""List of Key-Paths to exclude from being traversed, i.e. ignored.
                 Expected to be '-e 'path1' 'path2' 'pathn''
                 """,
     )
@@ -185,6 +185,13 @@ def traverse_winreg_for_values(root_hkey, subkey_path, exclude_keys):
 
             The exact subkey-path will be dependent on root_hkey
             passed and your Windows platform.
+
+        exclude_keys:
+            List of Path-Keys to not traverse or get the Name:Value pairs for
+            Example is:
+                ["{D3E34B21-9D75-101A-8C3D-00AA001A1652}",
+                 "System\Currentcontrolset\ServiceState",
+                 "HARDWARE\DESCRIPTION"]]
 
     """
 

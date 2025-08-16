@@ -24,6 +24,7 @@ wheels/
 
 # Visual Studio Code
 .vscode/
+*.code-workspace
 
 # PyTest
 .cov*
